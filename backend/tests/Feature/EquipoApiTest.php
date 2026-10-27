@@ -18,13 +18,60 @@ beforeEach(function () {
 });
 
 it('crea un equipo y responde 201 con el encabezado Location', function () {
-    // TODO
-})->todo();
+    $categoria = Categoria::factory()->create();
+    $datos = [
+        'codigo' => 'EQ-1234',
+        'nombre' => 'Laptop de laboratorio',
+        'categoria_id' => $categoria->id,
+        'fecha_adquisicion' => '2020-01-15',
+        'costo_interno' => 150000,
+    ];
+
+    $respuesta = $this->postJson('/api/equipos', $datos);
+
+    $respuesta->assertCreated()
+        ->assertHeader('Location', route('equipos.show', $respuesta->json('data.id')))
+        ->assertExactJson(['data' => [
+            'id' => $respuesta->json('data.id'),
+            'codigo' => 'EQ-1234',
+            'nombre' => 'Laptop de laboratorio',
+            'estado' => 'disponible',
+            'fecha_adquisicion' => '2020-01-15',
+            'categoria' => ['id' => $categoria->id, 'nombre' => $categoria->nombre],
+        ]]);
+
+    $this->assertDatabaseHas('equipos', [
+        ...$datos,
+        'fecha_adquisicion' => '2020-01-15 00:00:00',
+    ]);
+});
 
 it('rechaza un equipo con datos inválidos y responde 422 con errores por campo', function () {
-    // TODO
-})->todo();
+    $this->postJson('/api/equipos', [
+        'codigo' => 'INVALIDO',
+        'nombre' => 'A',
+        'categoria_id' => 999999,
+        'estado' => 'prestado',
+        'fecha_adquisicion' => now()->addDay()->toDateString(),
+        'costo_interno' => -1,
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'codigo', 'nombre', 'categoria_id', 'estado', 'fecha_adquisicion', 'costo_interno',
+        ])
+        ->assertJsonPath('errors.codigo.0', 'El código debe tener el formato EQ-0000.');
+
+    $this->assertDatabaseCount('equipos', 0);
+});
 
 it('impide eliminar un equipo prestado y responde 409', function () {
-    // TODO
-})->todo();
+    $equipo = Equipo::factory()->prestado()->create();
+
+    $this->deleteJson("/api/equipos/{$equipo->id}")
+        ->assertConflict()
+        ->assertExactJson([
+            'mensaje' => 'No se puede eliminar un equipo prestado.',
+            'codigo' => 'REGLA_NEGOCIO',
+        ]);
+
+    $this->assertDatabaseHas('equipos', ['id' => $equipo->id, 'estado' => 'prestado']);
+});
