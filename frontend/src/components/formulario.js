@@ -25,5 +25,52 @@ const $btnGuardar = document.querySelector("#btn-guardar");
  *     - Siempre (finally): rehabilite el botón y restaure su texto.
  */
 export const iniciarFormulario = ({ alGuardar }) => {
-  // TODO
+  listarCategorias().then(({ data }) => {
+    for (const categoria of data) {
+      const opcion = document.createElement("option");
+      opcion.value = categoria.id;
+      opcion.textContent = categoria.nombre;
+      $selectCategoria.append(opcion);
+    }
+  }).catch(() => mostrarMensaje("error", "No se pudieron cargar las categorías."));
+
+  $form.addEventListener("submit", async (evento) => {
+    evento.preventDefault();
+    if ($btnGuardar.disabled) return;
+
+    $form.querySelectorAll("[data-error]").forEach((elemento) => { elemento.textContent = ""; });
+    $form.querySelectorAll("[aria-invalid]").forEach((campo) => campo.removeAttribute("aria-invalid"));
+
+    const datos = Object.fromEntries(new FormData($form));
+    datos.categoria_id = datos.categoria_id === "" ? null : Number(datos.categoria_id);
+    datos.costo_interno = datos.costo_interno === "" ? null : Number(datos.costo_interno);
+
+    const textoOriginal = $btnGuardar.textContent;
+    $btnGuardar.disabled = true;
+    $btnGuardar.textContent = "Guardando…";
+
+    try {
+      const { data } = await crearEquipo(datos);
+      $form.reset();
+      mostrarMensaje("exito", `Equipo ${data.codigo} registrado.`);
+      await alGuardar();
+    } catch (error) {
+      if (error.status === 422) {
+        for (const [campo, mensajes] of Object.entries(error.datos.errors ?? {})) {
+          const parrafo = Array.from($form.querySelectorAll("[data-error]"))
+            .find((elemento) => elemento.dataset.error === campo);
+          if (parrafo) parrafo.textContent = mensajes[0];
+          $form.elements.namedItem(campo)?.setAttribute("aria-invalid", "true");
+        }
+        $form.querySelector('[aria-invalid="true"]')?.focus();
+      } else {
+        mostrarMensaje("error", error.name === "AbortError"
+          ? "La solicitud tardó demasiado. Revise el listado antes de intentar nuevamente."
+          : "No se pudo guardar el equipo. Intente nuevamente.");
+      }
+    } finally {
+      $btnGuardar.disabled = false;
+      $btnGuardar.textContent = textoOriginal;
+    }
+  });
 };
